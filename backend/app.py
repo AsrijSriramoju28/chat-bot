@@ -23,30 +23,31 @@ except Exception as e:
     print(f"Error configuring Google Gemini API: {e}")
 
 # Create a directory for uploads if it doesn't exist
-UPLOAD_FOLDER = 'uploads'
+UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-@app.route("/api/process-audio", methods=['POST', 'OPTIONS'])
-def process_audio():
-    if request.method == 'OPTIONS':
-        return '', 204
 
-    if 'audio' not in request.files:
+@app.route("/api/process-audio", methods=["POST", "OPTIONS"])
+def process_audio():
+    if request.method == "OPTIONS":
+        return "", 204
+
+    if "audio" not in request.files:
         return jsonify({"error": "No audio file part"}), 400
 
-    audio_file = request.files['audio']
-    if audio_file.filename == '':
+    audio_file = request.files["audio"]
+    if audio_file.filename == "":
         return jsonify({"error": "No selected file"}), 400
 
     # Save the original webm file
-    webm_path = os.path.join(UPLOAD_FOLDER, 'user_audio.webm')
+    webm_path = os.path.join(UPLOAD_FOLDER, "user_audio.webm")
     audio_file.save(webm_path)
     print(f"User audio (webm) saved to {webm_path}")
 
     # Convert webm to mp3
-    mp3_path = os.path.join(UPLOAD_FOLDER, 'user_audio.mp3')
+    mp3_path = os.path.join(UPLOAD_FOLDER, "user_audio.mp3")
     try:
-        y, sr = librosa.load(webm_path, sr=16000) # Downsample to 16kHz
+        y, sr = librosa.load(webm_path, sr=16000)  # Downsample to 16kHz
         sf.write(mp3_path, y, sr)
         print(f"Audio converted to mp3: {mp3_path}")
     except Exception as e:
@@ -55,8 +56,8 @@ def process_audio():
     gemini_file = None
     try:
         print("Uploading file to Gemini...")
-        gemini_file = genai.upload_file(path=mp3_path) # Upload the converted mp3
-        
+        gemini_file = genai.upload_file(path=mp3_path)  # Upload the converted mp3
+
         print(f"Waiting for file processing... Current state: {gemini_file.state.name}")
         while gemini_file.state.name == "PROCESSING":
             time.sleep(2)
@@ -64,13 +65,21 @@ def process_audio():
             print(f"Current state: {gemini_file.state.name}")
 
         if gemini_file.state.name != "ACTIVE":
-            raise ValueError(f"File processing failed on Google's servers. Final state: {gemini_file.state.name}")
+            raise ValueError(
+                f"File processing failed on Google's servers. Final state: {gemini_file.state.name}"
+            )
 
         print("File is active. Generating content with Gemini 1.5 Flash...")
         model = genai.GenerativeModel(model_name="models/gemini-1.5-flash-latest")
-        prompt = "Listen to this audio and provide a simple, concise answer to the user's question."
+        prompt = """
+                You are a friendly and knowledgeable AI assistant named 'Eva'. 
+                Your goal is to provide clear, helpful, and slightly detailed answers. 
+                When asked a question from the user's audio, please respond in a warm and conversational tone. 
+                If you don't know an answer, say so politely.
+                Here is the user's question:
+"""
         response = model.generate_content([prompt, gemini_file])
-        
+
         ai_response_text = response.text
         print(f"AI response generated: '{ai_response_text}'")
 
